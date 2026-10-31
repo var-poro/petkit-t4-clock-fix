@@ -1,0 +1,11 @@
+# Per-device data: flash dumps, extracted/patched images, chip MAC. Never publish these.
+device/
+*.bin
+*.md5
+SHA256
+MAC
+# Panel runtime files
+panel/wires.json
+panel/bridge-port.txt
+__pycache__/
+.DS_Store

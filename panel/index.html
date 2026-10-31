@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>litter // clock</title>
+<style>
+  :root { --bg:#0a0603; --card:#140b04; --text:#ff8200; --dim:#a85a12; --accent:#ff8200; --red:#ff3b5c; --border:#4a2606; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px 16px; background:var(--bg); color:var(--text); font:14px/1.45 ui-monospace, "SF Mono", Menlo, monospace; text-shadow:0 0 6px rgba(255,130,0,.35); }
+  body::after { content:""; position:fixed; inset:0; pointer-events:none; background:repeating-linear-gradient(0deg, rgba(0,0,0,.18) 0 1px, transparent 1px 3px); }
+  main { max-width:620px; margin:auto; display:grid; gap:12px; }
+  h1 { font-size:18px; margin:0 0 4px; letter-spacing:.08em; text-transform:uppercase; }
+  h1::before { content:"root@litter:~# "; color:var(--dim); }
+  h1::after { content:"█"; animation:blink 1s steps(1) infinite; margin-left:4px; }
+  @keyframes blink { 50% { opacity:0; } }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:2px; padding:14px; }
+  .steps { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .step { text-align:center; padding:10px 6px; border:1px solid var(--border); color:var(--dim); text-transform:uppercase; font-size:12px; letter-spacing:.06em; }
+  .step b { display:block; font-size:20px; }
+  .step b::before { content:"["; } .step b::after { content:"]"; }
+  .step.running { border-color:var(--accent); color:var(--accent); animation:pulse 1s infinite; }
+  .step.ok { border-color:var(--accent); color:var(--accent); background:rgba(255,130,0,.1); }
+  .step.failed { border-color:var(--red); color:var(--red); text-shadow:0 0 6px rgba(255,59,92,.5); }
+  #timer { font:700 64px/1 ui-monospace, Menlo, monospace; text-align:center; font-variant-numeric:tabular-nums; text-shadow:0 0 14px rgba(255,130,0,.7); }
+  #hint { text-align:center; font-size:15px; margin-top:8px; min-height:2.8em; }
+  #hint::before { content:"> "; color:var(--dim); }
+  #hint.alert { font-weight:700; animation:pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity:.45; } }
+  .bar { height:10px; border:1px solid var(--border); overflow:hidden; margin-top:10px; display:none; }
+  .bar i { display:block; height:100%; background:repeating-linear-gradient(90deg, var(--accent) 0 6px, transparent 6px 8px); width:0; transition:width .4s; }
+  button { width:100%; padding:12px; border:1px solid var(--accent); border-radius:2px; background:transparent; color:var(--accent); font:700 15px ui-monospace, Menlo, monospace; text-transform:uppercase; letter-spacing:.08em; cursor:pointer; text-shadow:inherit; }
+  button:hover:not(:disabled) { background:var(--accent); color:var(--bg); text-shadow:none; }
+  button::before { content:"$ "; }
+  button:disabled { opacity:.3; cursor:default; }
+  button.danger { border-color:var(--red); color:var(--red); }
+  button.danger:hover:not(:disabled) { background:var(--red); color:var(--bg); }
+  button.second { border-style:dashed; font-size:13px; }
+  .wiring .title { font-weight:700; margin-bottom:8px; text-transform:uppercase; }
+  .wiring .title::before { content:"// "; color:var(--dim); }
+  .wire { display:flex; align-items:center; gap:10px; padding:5px 0; }
+  .wire em { flex:0 0 22px; font-style:normal; font-weight:700; text-align:center; color:var(--dim); }
+  .wire em.ok { color:var(--accent); } .wire em.ko { color:var(--red); }
+  .wire span { flex:0 0 auto; min-width:150px; }
+  .wire span:last-child { text-align:right; }
+  .wire i { flex:1; height:2px; box-shadow:0 0 6px currentColor; }
+  .wiring p { margin:8px 0 0; color:var(--dim); font-size:12px; }
+  pre { margin:0; font:12px/1.5 ui-monospace, Menlo, monospace; white-space:pre-wrap; word-break:break-all; color:var(--text); max-height:300px; overflow:auto; }
+  pre::before { content:"[log]\A"; color:var(--dim); }
+</style>
+</head>
+<body>
+<main>
+  <h1>petkit-t4 // clock patch</h1>
+  <div class="steps">
+    <div class="step" id="e-wiring"><b>1</b>Wiring</div>
+    <div class="step" id="e-backup"><b>2</b>Backup</div>
+    <div class="step" id="e-patch"><b>3</b>Patch</div>
+  </div>
+  <div class="card">
+    <div id="timer">0:00</div>
+    <div id="hint">Litter box unplugged, wires in place. Click "Test wiring".</div>
+    <div class="bar" id="bar"><i id="prog"></i></div>
+    <div id="speed" style="text-align:center;font-size:13px;margin-top:6px;color:var(--dim)"></div>
+  </div>
+  <div class="card wiring">
+    <div class="title" id="wiring-title" style="cursor:pointer">Wiring <span id="wiring-summary" style="font-weight:400;color:var(--dim)"></span></div>
+    <div id="wiring-detail">
+    <div class="wire"><em id="f-rx">·</em><span>Flipper <b>13 TX</b></span><i style="background:#7F77DD"></i><span>Litter <b>WRXD</b></span></div>
+    <div class="wire"><em id="f-tx">·</em><span>DevKit <b>TX0</b></span><i style="background:#1D9E75"></i><span>Litter <b>WTXD</b></span></div>
+    <div class="wire"><em id="f-gnd">·</em><span>Flipper <b>18</b> + DevKit <b>GND</b></span><i style="background:#888780"></i><span>Litter <b>GND</b></span></div>
+    <div class="wire"><em>·</em><span>DevKit <b>EN</b></span><i style="background:#EF9F27"></i><span>DevKit <b>GND</b></span></div>
+    <div id="port" style="margin-top:6px;font-size:12px;color:var(--dim)"></div>
+    <p>✓ detected, ✗ to check, · not tested yet. Hybrid bridge: the Flipper sends (GPIO → USB-UART Bridge, pins 13/14), the DevKit receives. Flipper pin 14: nothing. Nothing on 3V3 or 5V. No wire on the DAT CLK RESET block.</p>
+    <p>A bare 3.3 V USB-serial adapter (CP210x, CH34x, FTDI) with no series resistor on TX can replace the bridge: TX → WRXD, RX → WTXD, GND → GND.</p>
+    </div>
+  </div>
+  <button id="go">Test wiring</button>
+  <button id="cancel" class="second" style="display:none">Cancel</button>
+  <div class="card"><button id="clear" class="second" style="width:auto;float:right;padding:4px 10px;font-size:11px">clear</button><button id="copy" class="second" style="width:auto;float:right;padding:4px 10px;font-size:11px;margin-right:6px">copy</button><pre id="log">—</pre></div>
+</main>
+<script>
+const ORDER = ["wiring", "backup", "patch"];
+const LABEL = { wiring: "Test wiring", backup: "Run backup (read only)", patch: "Write the patch" };
+let next = "wiring", state = {}, prev = null, armedUntil = 0;
+
+// Sounds: chime when a step succeeds, alarm when it fails, beep when action is needed
+// (plug in 12 V). The browser only allows sound after a click: enabled on the first one.
+let audio = null;
+document.addEventListener("click", () => { audio = audio || new AudioContext(); audio.resume(); });
+function note(freq, start, duration, type = "sine", vol = 0.25) {
+  if (!audio) return;
+  const t = audio.currentTime + start, o = audio.createOscillator(), g = audio.createGain();
+  o.type = type; o.frequency.value = freq;
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.001, t + duration);
+  o.connect(g).connect(audio.destination); o.start(t); o.stop(t + duration);
+}
+const chime = () => [523, 659, 784, 1047].forEach((f, i) => note(f, i * 0.12, 0.6));
+const alarm = () => [0, 0.25, 0.5].forEach(d => note(160, d, 0.2, "square", 0.18));
+const beep = () => [0, 0.18].forEach(d => note(880, d, 0.12, "triangle", 0.3));
+// Speed and time left, from the percentage progress over the last minute
+// (one read pass = 8 MB; the percentage restarts at 0 on the next pass).
+let samples = [];
+function speed() {
+  const p = state.percent, t = state.now;
+  if (state.status !== "running" || p == null) { samples = []; return ""; }
+  if (samples.length && p < samples[samples.length - 1][1]) samples = [];
+  if (!samples.length || p !== samples[samples.length - 1][1]) samples.push([t, p]);
+  samples = samples.filter(m => t - m[0] <= 60);
+  if (samples.length < 2) return "measuring speed…";
+  const [t0, p0] = samples[0], perSec = (p - p0) / (t - t0);
+  if (perSec <= 0) return "";
+  const kb = perSec / 100 * 8192, left = (100 - p) / perSec;
+  return `${p.toFixed(0)} % · ${kb.toFixed(1)} KB/s · ~${left >= 60 ? Math.round(left / 60) + " min" : Math.round(left) + " s"} left`;
+}
+
+// Wiring card folds itself once the 3 wires are validated or while a step runs; clicking
+// the title opens or closes it by hand (the manual choice wins afterwards).
+let wiringManual = null;
+function wiring() {
+  const f = state.wires || {}, valid = f.tx && f.rx && f.gnd;
+  const folded = wiringManual ?? (valid || state.status === "running");
+  $("wiring-detail").style.display = folded ? "none" : "block";
+  $("wiring-summary").textContent = (folded ? "▸ " : "▾ ") + (valid ? "3 wires validated" : "");
+}
+
+function sounds() {
+  if (prev) {
+    const done = prev.status === "running" && state.status !== "running";
+    if (done && state.status === "ok") chime();
+    if (done && state.status === "failed") alarm();
+    if (!prev.countdown && state.countdown) beep();
+  }
+  prev = { status: state.status, countdown: state.countdown };
+}
+const $ = id => document.getElementById(id);
+const mmss = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+const post = path => fetch(path, { method: "POST", headers: { "X-Panel": "1" } });
+
+$("copy").onclick = async () => {
+  const b = $("copy");
+  try { await navigator.clipboard.writeText((state.log || []).join("\n")); b.textContent = "copied"; }
+  catch { b.textContent = "failed"; }
+  setTimeout(() => (b.textContent = "copy"), 1500);
+};
+$("wiring-title").onclick = () => { wiringManual = $("wiring-detail").style.display !== "none"; wiring(); };
+$("clear").onclick = () => post("/clear");
+$("cancel").onclick = () => post("/cancel");
+$("go").onclick = async () => {
+  // In-page confirmation: some embedded browsers block confirm() without showing anything.
+  if (next === "patch" && !armedUntil) {
+    armedUntil = Date.now() + 6000;
+    return;
+  }
+  armedUntil = 0;
+  await post("/run/" + next);
+};
+
+function hint() {
+  const running = state.status === "running";
+  const last = (state.log || []).slice(-1)[0] || "";
+  if (state.step === "probe") return running ? ["Plug in 12 V normally, WITHOUT pressing OK. Listening to WRXD…", true] : [last, false];
+  if (running && state.countdown) return [`Plug in 12 V while holding OK — ${Math.max(0, Math.ceil(state.countdown - state.now))} s`, true];
+  if (running) return [{ wiring: "Listening to the litter box…", backup: "Reading the 8 MB, twice. Don't touch anything.", patch: "Writing then verifying. Don't touch anything." }[state.step], false];
+  if (state.status === "cancelled") return ["Cancelled. Run again whenever you want.", false];
+  if (state.status === "failed") return ["That did not work. Check the log below, fix, then run again.", false];
+  if (state.status === "ok" && state.step === "patch") return ["Patch written and verified. Unplug 12 V, remove RX/TX, replug without pressing OK.", false];
+  if (state.status === "ok") return ["Step done. The litter box stays in download mode: don't unplug it.", false];
+  if (next === "patch") return ["Backup validated. Ready to write the patch.", false];
+  return ["Litter box unplugged, wires in place. Click \"Test wiring\".", false];
+}
+
+async function tick() {
+  try { state = await (await fetch("/state")).json(); } catch { return; }
+  sounds();
+  const r = state.results || {};
+  next = ORDER.find(n => r[n] !== "ok") || null;
+  if (state.status === "failed" && ORDER.includes(state.step)) next = state.step;
+  ORDER.forEach(n => {
+    const cls = state.step === n && state.status === "running" ? "running" : r[n] || "";
+    $("e-" + n).className = "step " + cls;
+  });
+  const running = state.status === "running";
+  const t = state.start ? (state.end || state.now) - state.start : 0;
+  $("timer").textContent = mmss(t);
+  const [txt, alert] = hint();
+  $("hint").textContent = txt;
+  $("hint").className = alert ? "alert" : "";
+  $("bar").style.display = running && state.percent != null ? "block" : "none";
+  $("prog").style.width = (state.percent || 0) + "%";
+  $("speed").textContent = speed();
+  wiring();
+  $("go").disabled = running || !next;
+  $("clear").disabled = running;
+  $("cancel").style.display = running && state.step !== "patch" ? "block" : "none";
+  $("go").textContent = running ? "Running…" : next ? (state.status === "failed" ? "Retry: " : "") + LABEL[next] : "Done";
+  $("go").className = next === "patch" ? "danger" : "";
+  if (armedUntil && Date.now() > armedUntil) armedUntil = 0;
+  if (armedUntil && !running) $("go").textContent = `Confirm: write to the litter box (${Math.ceil((armedUntil - Date.now()) / 1000)} s)`;
+  const f = state.wires || {};
+  ["tx", "rx", "gnd"].forEach(k => {
+    const e = $("f-" + k);
+    e.textContent = f[k] === true ? "✓" : f[k] === false ? "✗" : "·";
+    e.className = f[k] === true ? "ok" : f[k] === false ? "ko" : "";
+    e.title = f[k] === true ? "detected" : f[k] === false ? "to check" : "not tested yet";
+  });
+  $("port").textContent = "port: " + (state.port || "?") + (/hybrid bridge/.test(state.port || "") ? "  [ok]" : "  [no hybrid bridge: Flipper (USB-UART Bridge) + DevKit plugged in?]");
+  $("log").textContent = (state.log || []).join("\n") || "—";
+  $("log").scrollTop = 1e9;
+}
+setInterval(tick, 500); tick();
+</script>
+</body>
+</html>
